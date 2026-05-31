@@ -1,12 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "News Wizard — বাংলা সংবাদ সম্পাদক",
-  description:
-    "বাংলা সংবাদের জন্য স্মার্ট বানান পরীক্ষা, সম্পাদনা এবং ইংরেজি অনুবাদ।",
-  icons: {
-    icon: "📰",
-  },
+  title: "শুদ্ধি – বাংলা বানান শুদ্ধিকরণ",
+  description: "নির্ভুল বাংলা লেখার জন্য স্মার্ট বানান পরীক্ষা, সম্পাদনা এবং শুদ্ধিকরণ টুল।",
 };
 
 export default function RootLayout({ children }) {
