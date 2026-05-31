@@ -35,7 +35,7 @@ export default function BanglaNewsEditor() {
 
   const handleTextChange = (e) => {
     setText(e.target.value);
-    setIsClean(false); // Only resets if they edit in the main top editor
+    setIsClean(false); 
   };
 
   const checkSpelling = async () => {
@@ -187,7 +187,7 @@ export default function BanglaNewsEditor() {
               className={styles.textarea}
               value={text}
               onChange={handleTextChange}
-              placeholder="এখানে সংবাদ লিখুন..."
+              placeholder="এখানে লিখুন..."
               spellCheck="false"
             />
 
@@ -214,7 +214,6 @@ export default function BanglaNewsEditor() {
             </div>
           </div>
 
-          {/* Only render Tabs and Panel if an action has been taken */}
           {activeTab && (
             <>
               <div className={styles.tabs}>
