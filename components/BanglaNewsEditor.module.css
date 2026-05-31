@@ -16,7 +16,7 @@
 
 .focusMode .layout {
   grid-template-columns: 1fr;
-  max-width: 800px;
+  max-width: 950px; /* Increased from 800px */
   padding-top: 4rem;
 }
 
@@ -30,7 +30,7 @@
 }
 
 .mastheadInner { 
-  max-width: 1100px; 
+  max-width: 1280px; /* Increased from 1100px */
   margin: 0 auto; 
   padding: 0 2rem; 
   display: flex; 
@@ -54,7 +54,7 @@
 
 /* ============ Layout ============ */
 .layout {
-  max-width: 1100px;
+  max-width: 1280px; /* Increased from 1100px */
   margin: 0 auto;
   padding: 2.5rem 2rem 4rem;
   display: grid;
@@ -128,7 +128,7 @@
 .btnIgnore { background: transparent; border: 1px solid transparent; color: var(--text-muted); }
 .btnIgnore:hover { background: var(--cream-dark); color: var(--ink); }
 
-/* ============ Mobile Sticky Bar ============ */
+/* ============ Mobile Sticky Bar & Wider Canvas ============ */
 @media (max-width: 768px) {
   .actionBar {
     position: fixed; 
@@ -141,7 +141,13 @@
   }
   .layout { 
     grid-template-columns: 1fr;
-    padding-bottom: 90px; 
+    padding: 1.5rem 1rem 90px; /* Reduced side padding from 2rem to 1rem for a wider mobile canvas */
+  }
+  .mastheadInner {
+    padding: 0 1rem; /* Aligns masthead with the new wider mobile layout */
+  }
+  .textarea {
+    padding: 1.25rem 1rem; /* Slightly less inner padding on phones */
   }
   .btnFocus { display: none; }
 }
@@ -183,11 +189,45 @@
   min-height: 200px;
 }
 
+@media (max-width: 768px) {
+  .panel {
+    padding: 1.25rem 1rem; /* Less padding inside the panel on mobile */
+  }
+}
+
 .previewBox {
   font-size: 1.15rem; 
   line-height: 1.9; 
   color: var(--ink);
   white-space: pre-wrap;
+}
+
+.editableResult {
+  width: 100%;
+  min-height: 250px;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-body);
+  font-size: 1.15rem;
+  line-height: 1.9;
+  color: var(--ink);
+  background: var(--cream);
+  resize: vertical;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.editableResult:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(13, 115, 119, 0.1);
+  background: white;
+}
+
+@media (max-width: 768px) {
+  .editableResult {
+    padding: 1.25rem 1rem; /* Less padding inside editable text on mobile */
+  }
 }
 
 .errorHighlight {
@@ -353,25 +393,4 @@
 .footer a:hover {
   color: var(--accent);
   text-decoration: underline;
-}
-.editableResult {
-  width: 100%;
-  min-height: 250px;
-  padding: 1.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  font-family: var(--font-body);
-  font-size: 1.15rem;
-  line-height: 1.9;
-  color: var(--ink);
-  background: var(--cream);
-  resize: vertical;
-  outline: none;
-  transition: all 0.2s ease;
-}
-
-.editableResult:focus {
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px rgba(13, 115, 119, 0.1);
-  background: white;
 }
