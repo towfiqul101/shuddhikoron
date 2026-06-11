@@ -1,27 +1,21 @@
-import { callGemini, SPELL_CHECK_PROMPT } from "../gemini.js";
+import { NextResponse } from "next/server";
+import { callGemini, SPELL_CHECK_PROMPT } from "../gemini";
 
 export async function POST(request) {
   try {
     const { text } = await request.json();
-
-    if (!text || text.trim().length === 0) {
-      return Response.json(
-        { errors: [], summary: "কোনো টেক্সট পাঠানো হয়নি।" },
-        { status: 200 }
-      );
+    
+    if (!text) {
+      return NextResponse.json({ error: "Text is required" }, { status: 400 });
     }
-
-    const result = await callGemini(
-      SPELL_CHECK_PROMPT,
-      `এই বাংলা পাঠটি বানান পরীক্ষা করো:\n\n${text}`
-    );
-
-    return Response.json(result, { status: 200 });
+    
+    // Calls our orchestrator (Gemini first, Groq fallback)
+    const result = await callGemini(SPELL_CHECK_PROMPT, text);
+    
+    return NextResponse.json(result);
+    
   } catch (error) {
-    console.error("বানান পরীক্ষা ত্রুটি:", error);
-    return Response.json(
-      { error: error.message || "বানান পরীক্ষা ব্যর্থ হয়েছে।" },
-      { status: 500 }
-    );
+    console.error("Spell check error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
