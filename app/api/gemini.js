@@ -42,7 +42,8 @@ If no major rewrite is needed, just improve the flow and provide the translation
 // --- PRIMARY PROVIDER: GEMINI ---
 async function fetchFromGemini(systemPrompt, userText) {
   const apiKey = process.env.GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
+  // Fixed: Using the actual valid Google model (gemini-2.0-flash)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
   
   const response = await fetch(url, {
     method: "POST",
@@ -62,7 +63,6 @@ async function fetchFromGemini(systemPrompt, userText) {
 // --- SECONDARY PROVIDER: GROQ ---
 async function fetchFromGroq(systemPrompt, userText) {
   const apiKey = process.env.GROQ_API_KEY;
-  // FIXED: Changed "openapi" to "openai"
   const url = 'https://api.groq.com/openai/v1/chat/completions';
   
   const response = await fetch(url, {
@@ -72,7 +72,8 @@ async function fetchFromGroq(systemPrompt, userText) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'llama3-70b-8192', 
+      // Fixed: Updated to Groq's active, supported Llama 3.3 model
+      model: 'llama-3.3-70b-versatile', 
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userText }
