@@ -9,9 +9,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
     }
     
-    // Calls our orchestrator (Gemini first, Groq fallback)
     const result = await callGemini(SPELL_CHECK_PROMPT, text);
-    
     return NextResponse.json(result);
     
   } catch (error) {
