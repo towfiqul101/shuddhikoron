@@ -62,7 +62,8 @@ async function fetchFromGemini(systemPrompt, userText) {
 // --- SECONDARY PROVIDER: GROQ ---
 async function fetchFromGroq(systemPrompt, userText) {
   const apiKey = process.env.GROQ_API_KEY;
-  const url = 'https://api.groq.com/openapi/v1/chat/completions';
+  // FIXED: Changed "openapi" to "openai"
+  const url = 'https://api.groq.com/openai/v1/chat/completions';
   
   const response = await fetch(url, {
     method: 'POST',
