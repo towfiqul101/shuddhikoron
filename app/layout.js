@@ -1,4 +1,4 @@
-import "./globals.css";
+import './globals.css'
 
 export const metadata = {
   title: "শুদ্ধি – বাংলা বানান শুদ্ধিকরণ",
