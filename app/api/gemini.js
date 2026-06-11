@@ -39,12 +39,12 @@ Return ONLY a valid JSON object in this exact format:
 }
 If no major rewrite is needed, just improve the flow and provide the translation.`;
 
-export async function callGemini(systemPrompt, userText) {
+// --- PRIMARY PROVIDER: GEMINI ---
+async function fetchFromGemini(systemPrompt, userText) {
   const apiKey = process.env.GEMINI_API_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
   
-  const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent";
-  
-  const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -55,26 +55,55 @@ export async function callGemini(systemPrompt, userText) {
   });
   
   const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || "Gemini API failed");
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
 
-  if (!response.ok) {
-    throw new Error(data.error?.message || "Failed to fetch from Gemini API");
+// --- SECONDARY PROVIDER: GROQ ---
+async function fetchFromGroq(systemPrompt, userText) {
+  const apiKey = process.env.GROQ_API_KEY;
+  const url = 'https://api.groq.com/openapi/v1/chat/completions';
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'llama3-70b-8192', 
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userText }
+      ],
+      temperature: 0.1
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || "Groq API failed");
+  return data.choices[0].message.content || "";
+}
+
+// --- MAIN EXPORT ORCHESTRATOR ---
+export async function callGemini(systemPrompt, userText) {
+  let rawText = "";
+  
+  try {
+    rawText = await fetchFromGemini(systemPrompt, userText);
+  } catch (error) {
+    console.warn("Primary API failed. Engaging Groq fallback...", error.message);
+    rawText = await fetchFromGroq(systemPrompt, userText);
   }
   
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  
+  // Bulletproof JSON parsing
   let cleaned = rawText.trim();
-  
   const fence = String.fromCharCode(96, 96, 96); 
   
-  if (cleaned.startsWith(fence + "json")) {
-    cleaned = cleaned.substring(7);
-  } else if (cleaned.startsWith(fence)) {
-    cleaned = cleaned.substring(3);
-  }
+  if (cleaned.startsWith(fence + "json")) cleaned = cleaned.substring(7);
+  else if (cleaned.startsWith(fence)) cleaned = cleaned.substring(3);
   
-  if (cleaned.endsWith(fence)) {
-    cleaned = cleaned.substring(0, cleaned.length - 3);
-  }
+  if (cleaned.endsWith(fence)) cleaned = cleaned.substring(0, cleaned.length - 3);
   
   return JSON.parse(cleaned.trim());
 }
