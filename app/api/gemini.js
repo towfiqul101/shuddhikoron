@@ -1,28 +1,34 @@
-export const SPELL_CHECK_PROMPT = `You are an expert Bengali proofreader and linguist. Your job is to find spelling errors in the provided Bengali text.
+export const SPELL_CHECK_PROMPT = `You are a strict, meticulous, and expert Bengali proofreader. Your task is to analyze the provided Bengali text WORD BY WORD and identify ALL spelling, grammatical, and typographical errors according to 'Bangla Academy Promito Bangla Banan'.
 
-Follow these strict rules based on বাংলা একাডেমি প্রমিত বাংলা বানানের নিয়ম (২০১২) and খটকা বানান অভিধান:
-১. ই-কার/উ-কার: তৎসম, দেশি ও বিদেশি শব্দে ই-কার বা উ-কার হবে (যেমন: একাডেমি, পল্লি, সরকারি, কাহিনি, ইংরেজি, দিঘি, শাড়ি, অদ্ভুত)।
-২. ণ/ন ও ষ/স/শ: বিদেশি শব্দে 'ণ' বা 'ষ' বসবে না, 'ন' ও 'স/শ' বসবে (যেমন: গভর্নর, হর্ন, স্টল, স্টেশন, মাস্টার, কর্নার, মডার্ন)।
-৩. রেফ: রেফের পর ব্যঞ্জনবর্ণের দ্বিত্ব হবে না (যেমন: অর্জন, কর্ম, সূর্য, কার্যালয়)।
-৪. বিসর্গ (ঃ): শব্দের শেষে বিসর্গ থাকবে না (যেমন: কার্যত, মূলত, প্রধানত)।
-৫. ঙ/ং: সন্ধির ক্ষেত্রে ং হবে (অহংকার, সংগীত)। সন্ধিবদ্ধ না হলে ঙ হবে (অঙ্ক, অঙ্গ, আকাঙ্ক্ষা, আতঙ্ক)।
-৬. কি/কী: হ্যাঁ/না উত্তরের প্রশ্নে 'কি' এবং বর্ণনামূলক প্রশ্নে 'কী' বসবে।
-৭. খটকা বানান: অদ্ভুত (অদ্ভূত নয়), উপযুক্ত (উপযোগী নয়), ইতিমধ্যে (ইতোমধ্যে নয়), ঊর্ধ্বতন (উর্ধতন নয়)।
-৮. সংখ্যা (Numbers): Bengali news text MUST use Bengali numerals (০-৯). If you find ANY English numerals (0, 1, 2, 3, 4, 5, 6, 7, 8, 9) inside the Bengali text, flag them as errors and suggest the exact Bengali equivalent (e.g., "15" -> "১৫", "7" -> "৭").
+CRITICAL RULES YOU MUST ENFORCE:
+1. Vowels (ই/ঈ): Foreign/English words, and common Bengali words MUST use 'ই' (i-kar), NOT 'ঈ' (ee-kar).
+   - WRONG: জানুয়ারী, একাডেমী, সরকারী, চাকরী, দরকারী, গাড়ী, ভারী, দামী, জিনিষ
+   - CORRECT: জানুয়ারি, একাডেমি, সরকারি, চাকরি, দরকারি, গাড়ি, ভারি, দামি, জিনিস
+2. Consonants (ষ/ণ/শ/স): Foreign/English words MUST NOT use 'ষ' (murdhonno-sho) or 'ণ' (murdhonno-no). Use 'স', 'শ', and 'ন'.
+   - WRONG: ষ্টেশন, মাষ্টার, গভর্ণর, হর্ণ, ষ্টল, পোষ্ট
+   - CORRECT: স্টেশন, মাস্টার, গভর্নর, হর্ন, স্টল, পোস্ট
+3. Conjuncts (ঙ/ং):
+   - WRONG: আকাংখা, অংক, অংগ
+   - CORRECT: আকাঙ্ক্ষা, অঙ্ক, অঙ্গ
+4. Confusing Words (খটকা বানান):
+   - WRONG: অদ্ভূত, ইতিমধ্যে, উপরোক্ত
+   - CORRECT: অদ্ভুত, ইতোমধ্যে, উপরিউক্ত
+5. English Numbers: ANY English digit (0-9) is a STRICT ERROR in Bengali text. You MUST scan for numbers.
+   - WRONG: 15, 7, 2, 2024
+   - CORRECT: ১৫, ৭, ২, ২০২৪
 
-Return ONLY a valid JSON object in this exact format:
+You MUST output ONLY a valid JSON object. Do not include markdown formatting or backticks.
+Format:
 {
   "errors": [
     {
-      "word": "the_wrong_word_found_in_text",
-      "suggestion": "the_correct_spelling",
-      "rule": "Short explanation of the rule in Bengali",
-      "position": "Position in text (e.g., প্রথম বাক্য)"
+      "word": "the_exact_wrong_word_found",
+      "suggestion": "the_corrected_word",
+      "rule": "Short explanation of the rule in Bengali"
     }
   ],
-  "summary": "A short summary in Bengali, e.g., '২টি বানান ভুল পাওয়া গেছে।'"
-}
-If there are no errors, return an empty array for "errors" and a success message in "summary".`;
+  "summary": "A short summary in Bengali, e.g., 'মোট ৫টি বানান ভুল পাওয়া গেছে।'"
+}`;
 
 export const REWRITE_PROMPT = `You are an expert Bangladeshi journalist and editor. Your job is to rewrite the provided Bengali news text to meet professional editorial standards, similar to major Bangladeshi newspapers.
 
@@ -31,18 +37,16 @@ Tasks:
 2. Translate the newly rewritten Bengali news into professional journalistic English.
 3. List the major editorial changes made (in Bengali).
 
-Return ONLY a valid JSON object in this exact format:
+Return ONLY a valid JSON object. Format:
 {
   "rewritten": "The rewritten Bengali text.",
   "english": "The English translation.",
   "changes": ["'আজকে' → 'আজ' করা হয়েছে", "বাক্যের গঠন সুন্দর করা হয়েছে"]
-}
-If no major rewrite is needed, just improve the flow and provide the translation.`;
+}`;
 
 // --- PRIMARY PROVIDER: GEMINI ---
 async function fetchFromGemini(systemPrompt, userText) {
   const apiKey = process.env.GEMINI_API_KEY;
-  // Fixed: Using the actual valid Google model (gemini-2.0-flash)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
   
   const response = await fetch(url, {
@@ -51,7 +55,11 @@ async function fetchFromGemini(systemPrompt, userText) {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts: [{ text: userText }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+      generationConfig: { 
+        temperature: 0.1, 
+        maxOutputTokens: 4096,
+        responseMimeType: "application/json" // Forces Strict JSON output
+      },
     }),
   });
   
@@ -72,8 +80,8 @@ async function fetchFromGroq(systemPrompt, userText) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      // Fixed: Updated to Groq's active, supported Llama 3.3 model
       model: 'llama-3.3-70b-versatile', 
+      response_format: { type: "json_object" }, // Forces Strict JSON output
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userText }
@@ -98,7 +106,7 @@ export async function callGemini(systemPrompt, userText) {
     rawText = await fetchFromGroq(systemPrompt, userText);
   }
   
-  // Bulletproof JSON parsing
+  // Cleanup any potential stray markdown just in case
   let cleaned = rawText.trim();
   const fence = String.fromCharCode(96, 96, 96); 
   
