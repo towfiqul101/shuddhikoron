@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { callGemini, SPELL_CHECK_PROMPT } from "../gemini";
+import { checkSpellingWithGemini } from "../gemini";
 
 export async function POST(request) {
   try {
@@ -9,7 +9,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
     }
     
-    const result = await callGemini(SPELL_CHECK_PROMPT, text);
+    const result = await checkSpellingWithGemini(text);
     return NextResponse.json(result);
     
   } catch (error) {
