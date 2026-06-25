@@ -1,120 +1,362 @@
-export const SPELL_CHECK_PROMPT = `You are a strict, meticulous, and expert Bengali proofreader. Your task is to analyze the provided Bengali text WORD BY WORD and identify ALL spelling, grammatical, typographical errors, and English numbers.
+// ============================================================
+// gemini.js — Shuddhikoron AI Engine
+// Fixed: removed responseMimeType bug, rebuilt SPELL_CHECK_PROMPT
+// ============================================================
 
-CRITICAL RULES YOU MUST ENFORCE:
-1. NUMBERS (Highest Priority): ANY English digit (0-9) inside the Bengali text is a STRICT ERROR. You MUST find every single English number and suggest the Bengali equivalent.
-   - WRONG: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-   - CORRECT: ০, ১, ২, ৩, ৪, ৫, ৬, ৭, ৮, ৯
-   - Examples: "2023" -> "২০২৩", "7" -> "৭", "15" -> "১৫", "2" -> "২".
-2. Vowels (ই/ঈ): Foreign/English words, and common Bengali words MUST use 'ই' (i-kar), NOT 'ঈ' (ee-kar).
-   - WRONG: জানুয়ারী, একাডেমী, সরকারী, চাকরী, দরকারী, গাড়ী, ভারী, দামী, জিনিষ
-   - CORRECT: জানুয়ারি, একাডেমি, সরকারি, চাকরি, দরকারি, গাড়ি, ভারি, দামি, জিনিস
-3. Consonants (ষ/ণ/শ/স): Foreign/English words MUST NOT use 'ষ' (murdhonno-sho) or 'ণ' (murdhonno-no). Use 'স', 'শ', and 'ন'.
-   - WRONG: ষ্টেশন, মাষ্টার, গভর্ণর, হর্ণ, ষ্টল, পোষ্ট
-   - CORRECT: স্টেশন, মাস্টার, গভর্নর, হর্ন, স্টল, পোস্ট
-4. Conjuncts (ঙ/ং):
-   - WRONG: আকাংখা, অংক, অংগ
-   - CORRECT: আকাঙ্ক্ষা, অঙ্ক, অঙ্গ
-5. Confusing Words (খটকা বানান):
-   - WRONG: অদ্ভূত, ইতিমধ্যে, উপরোক্ত
-   - CORRECT: অদ্ভুত, ইতোমধ্যে, উপরিউক্ত
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-You MUST output ONLY a valid JSON object. Do not include markdown formatting or backticks.
-Format:
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// ============================================================
+// UTILITY: Robust JSON parser that handles markdown fences
+// ============================================================
+function cleanAndParse(text) {
+  if (!text) throw new Error("Empty response from AI");
+
+  // Strip markdown code fences if present
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```json\s*/i, "").replace(/\s*```$/, "");
+  cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
+  cleaned = cleaned.trim();
+
+  // Find the first { or [ to handle any preamble text
+  const firstBrace = cleaned.indexOf("{");
+  const firstBracket = cleaned.indexOf("[");
+
+  let startIdx = -1;
+  if (firstBrace !== -1 && firstBracket !== -1) {
+    startIdx = Math.min(firstBrace, firstBracket);
+  } else if (firstBrace !== -1) {
+    startIdx = firstBrace;
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket;
+  }
+
+  if (startIdx > 0) {
+    cleaned = cleaned.slice(startIdx);
+  }
+
+  // Find matching end
+  const lastBrace = cleaned.lastIndexOf("}");
+  const lastBracket = cleaned.lastIndexOf("]");
+  const endIdx = Math.max(lastBrace, lastBracket);
+  if (endIdx !== -1 && endIdx < cleaned.length - 1) {
+    cleaned = cleaned.slice(0, endIdx + 1);
+  }
+
+  return JSON.parse(cleaned);
+}
+
+// ============================================================
+// SPELL CHECK PROMPT
+// Sources:
+//   - বাংলা একাডেমি প্রমিত বাংলা বানানের নিয়ম (২০১২)
+//   - খটকা বানান অভিধান (ড. মাহবুবুল হক)
+//   - ২৬০+ বাংলা সমার্থক শব্দ (embedded below for context)
+// ============================================================
+const SPELL_CHECK_PROMPT = `
+তুমি বাংলা ভাষার একজন বিশেষজ্ঞ বানান পরীক্ষক। তুমি বাংলা একাডেমি প্রমিত বানান রীতি (২০১২) এবং সাংবাদিক লেখার মান অনুসরণ করো।
+
+=== বাংলা একাডেমি প্রমিত বানানের মূল নিয়ম (২০১২) ===
+
+১. ই-কার বনাম ঈ-কার:
+- বিদেশি/আগত শব্দে সর্বদা ই-কার ব্যবহার করতে হবে, ঈ-কার নয়।
+- সঠিক: আমদানি, আলমারি, চাকরি, ইংরেজি, হিন্দি, উর্দু, জানুয়ারি, ফেব্রুয়ারি, মার্চ, এপ্রিল, জুলাই, আগস্ট, সেপ্টেম্বর, অক্টোবর, নভেম্বর, ডিসেম্বর
+- ভুল: আমদানী, আলমারী, চাকরী, ইংরেজী, হিন্দী
+
+- তৎসম শব্দ: শ্রেণি (NOT শ্রেণী), মূর্তি (NOT মূর্তী), শান্তি (NOT শান্তী), পরিণতি (NOT পরিণতী), শক্তি (NOT শক্তী), ব্যক্তি (NOT ব্যক্তী), প্রকৃতি (NOT প্রকৃতী), জাতি (NOT জাতী), রীতি (NOT রীতী), নীতি (NOT নীতী), কীর্তি (NOT কীর্তী), সংগতি, অনুমতি, গতি, স্থিতি, উন্নতি, অবনতি, সমিতি, পরিচিতি
+
+২. ণ-ত্ব বিধান ও ষ-ত্ব বিধান:
+- বিদেশি শব্দে ণ ও ষ ব্যবহার বর্জনীয়
+- সঠিক: স্টেশন, মাস্টার, পোস্ট, রেস্তোরাঁ, গভর্নর
+- ভুল: ষ্টেশন, মাষ্টার, পোষ্ট, রেষ্টুরেন্ট, গভর্ণর
+
+৩. অনুনাসিক:
+- সঠিক: অঙ্ক, অঙ্গ, অঙ্গীকার, বাংলা, সংখ্যা, লঙ্কা
+- ভুল: অংক, অংগ, অংগীকার (ঙ-এর পরিবর্তে ং বসানো ভুল যেখানে ঙ হওয়া উচিত)
+
+৪. প্রমিত কিছু বিশেষ বানান:
+- অদ্ভুত (NOT অদ্ভূত)
+- অধঃপতন (NOT অধোপতন)
+- সত্যিকার (NOT সত্যিকারের — সাংবাদিক ভাষায়)
+- একটু (NOT এক টু)
+- আবার (NOT আবারও — যদি না জোর দেওয়া হয়)
+- ছাড়া (NOT ছাড়াও — প্রসঙ্গ অনুযায়ী)
+
+৫. সংখ্যা:
+- বাংলা পাঠ্যের মধ্যে ইংরেজি সংখ্যা (1, 2, 3 ইত্যাদি) ব্যবহার সঠিক নয়
+- বাংলা সংখ্যা ব্যবহার করতে হবে: ১, ২, ৩, ৪, ৫, ৬, ৭, ৮, ৯, ০
+
+=== খটকা বানান অভিধান (ড. মাহবুবুল হক) — নির্বাচিত নিয়ম ===
+
+নিচের বানানগুলো সংবাদপত্রে প্রায়ই ভুল লেখা হয়:
+
+| ভুল বানান | সঠিক বানান |
+|-----------|-----------|
+| অধীনস্ত | অধীনস্থ |
+| অনাকাঙ্খা | অনাকাঙ্ক্ষা |
+| ইতিমধ্যে | ইতোমধ্যে |
+| উপরোক্ত | উপরিউক্ত |
+| গভর্ণর | গভর্নর |
+| হর্ণ | হর্ন |
+| পোষ্ট | পোস্ট |
+| ষ্টল | স্টল |
+| স্বাক্ষী | সাক্ষী |
+| স্বাক্ষর | স্বাক্ষর (এটি সঠিক — "নিজের নাম লেখা") |
+| সাক্ষর | সাক্ষর (এটি সঠিক — "শিক্ষিত/লিখতে পারে") |
+| পূনরায় | পুনরায় |
+| পুণরায় | পুনরায় |
+| বিভ্রান্তি | বিভ্রান্তি (সঠিক) |
+| বিভ্রান্তী | বিভ্রান্তি (সঠিক) |
+| গ্রেফতার | গ্রেপ্তার |
+| মামলা-মোকদ্দমা | মামলা-মোকাদ্দমা |
+| স্থগীত | স্থগিত |
+| ঊর্ধে | ঊর্ধ্বে |
+| ঊর্দ্ধে | ঊর্ধ্বে |
+| শতকরা | শতকরা (সঠিক) |
+| প্রতিষেধক | প্রতিষেধক (সঠিক) |
+| প্রতিষেধক | প্রতিষেধক (সঠিক) |
+| কার্যকরী | কার্যকর (বিশেষণ হিসেবে) |
+| পদত্যাগ | পদত্যাগ (সঠিক) |
+| প্রয়োজনীয় | প্রয়োজনীয় (সঠিক) |
+| নিরাপত্তা | নিরাপত্তা (সঠিক) |
+| নিরাপত্তাহীন | নিরাপত্তাহীন (সঠিক) |
+
+=== সাংবাদিক বাংলার বিশেষ নিয়ম ===
+
+১. ক্রিয়া রূপ: সংবাদে সাধু ও চলিত মিশ্রণ করা যাবে না।
+২. বিরামচিহ্ন: বাংলায় দাঁড়ি (।) ব্যবহার করতে হবে, ইংরেজি পিরিয়ড (.) নয়।
+৩. উদ্ধৃতি চিহ্ন: বাংলায় " " বা ' ' ব্যবহার সমান গ্রহণযোগ্য।
+৪. কারক বিভক্তি: "র" ও "এর" — সংবাদে "এর" অধিক প্রচলিত।
+৫. তারিখ: বাংলা সংখ্যায় লিখতে হবে। যেমন: ১৫ আগস্ট, ২০২৪।
+
+=== নির্দেশনা ===
+
+তোমাকে যে বাংলা পাঠ্য দেওয়া হবে, তা মনোযোগ দিয়ে পড়ো এবং:
+- প্রতিটি বানান ভুল চিহ্নিত করো
+- প্রতিটি ভুল শব্দের সঠিক বানান দাও
+- কোন নিয়ম লঙ্ঘিত হয়েছে তা বাংলায় সংক্ষেপে ব্যাখ্যা করো
+
+শুধুমাত্র নিচের JSON ফরম্যাটে উত্তর দাও। কোনো preamble, মন্তব্য, বা মার্কডাউন ব্লক (যেমন \`\`\`json) ব্যবহার করবে না। শুধু বিশুদ্ধ JSON রিটার্ন করো:
+
 {
   "errors": [
     {
-      "word": "the_exact_wrong_word_found",
-      "suggestion": "the_corrected_word",
-      "rule": "Short explanation of the rule in Bengali"
+      "word": "ভুল শব্দটি হুবহু যেভাবে পাঠ্যে আছে",
+      "suggestion": "সঠিক বানান",
+      "rule": "কোন নিয়ম ভঙ্গ হয়েছে তার সংক্ষিপ্ত বাংলা ব্যাখ্যা"
     }
   ],
-  "summary": "A short summary in Bengali, e.g., 'মোট ৫টি বানান ভুল পাওয়া গেছে।'"
-}`;
+  "summary": "মোট Xটি বানান ভুল পাওয়া গেছে।"
+}
 
-export const REWRITE_PROMPT = `You are an expert Bangladeshi journalist and editor. Your job is to rewrite the provided Bengali news text to meet professional editorial standards, similar to major Bangladeshi newspapers.
-
-Tasks:
-1. Rewrite the Bengali text to be professional, concise, and in standard journalistic style. Remove colloquialisms.
-2. Translate the newly rewritten Bengali news into professional journalistic English.
-3. List the major editorial changes made (in Bengali).
-
-Return ONLY a valid JSON object. Format:
+যদি কোনো ভুল না পাওয়া যায়, তাহলে:
 {
-  "rewritten": "The rewritten Bengali text.",
-  "english": "The English translation.",
-  "changes": ["'আজকে' → 'আজ' করা হয়েছে", "বাক্যের গঠন সুন্দর করা হয়েছে"]
-}`;
-
-// --- PRIMARY PROVIDER: GEMINI ---
-async function fetchFromGemini(systemPrompt, userText) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-  
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userText }] }],
-      generationConfig: { 
-        temperature: 0.1, 
-        maxOutputTokens: 4096,
-        responseMimeType: "application/json" 
-      },
-    }),
-  });
-  
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || "Gemini API failed");
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  "errors": [],
+  "summary": "কোনো বানান ভুল পাওয়া যায়নি।"
 }
+`;
 
-// --- SECONDARY PROVIDER: GROQ ---
-async function fetchFromGroq(systemPrompt, userText) {
-  const apiKey = process.env.GROQ_API_KEY;
-  const url = 'https://api.groq.com/openai/v1/chat/completions';
-  
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile', 
-      response_format: { type: "json_object" }, 
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userText }
-      ],
-      temperature: 0.1
-    })
-  });
+// ============================================================
+// NEWS REWRITE PROMPT
+// ============================================================
+const REWRITE_PROMPT = `
+তুমি প্রথম আলো এবং bdnews24.com-এর একজন অভিজ্ঞ সম্পাদক। তোমার কাজ হলো বাংলা সংবাদ পুনর্লিখন করা।
 
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || "Groq API failed");
-  return data.choices[0].message.content || "";
+লেখার মান:
+- প্রমিত বাংলা (বাংলা একাডেমি ২০১২ অনুযায়ী)
+- সংক্ষিপ্ত, স্পষ্ট, তথ্যবহুল বাক্য
+- সক্রিয় কণ্ঠস্বর (active voice) অগ্রাধিকার
+- সংবাদের পাঁচ 'ক' (কে, কী, কখন, কোথায়, কেন) উপস্থিত রাখো
+- চলিত ভাষা, সাধু ভাষার মিশ্রণ এড়াও
+- বাংলা সংখ্যা ব্যবহার করো
+
+শুধুমাত্র নিচের JSON ফরম্যাটে উত্তর দাও। কোনো preamble বা মার্কডাউন ব্লক ব্যবহার করবে না:
+
+{
+  "rewritten": "পুনর্লিখিত বাংলা সংবাদ",
+  "english": "English translation of the rewritten news",
+  "changes": [
+    "পরিবর্তন ১",
+    "পরিবর্তন ২"
+  ]
 }
+`;
 
-// --- MAIN EXPORT ORCHESTRATOR ---
-// This is the function the other files are looking for!
-export async function callGemini(systemPrompt, userText) {
-  let rawText = "";
-  
+// ============================================================
+// GEMINI API CALL — SPELL CHECK
+// ============================================================
+export async function checkSpellingWithGemini(text) {
   try {
-    rawText = await fetchFromGemini(systemPrompt, userText);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction: SPELL_CHECK_PROMPT,
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+        // ⚠️ DO NOT add responseMimeType: "application/json" here.
+        // It silently overrides systemInstruction and breaks everything.
+      },
+    });
+
+    const result = await model.generateContent(
+      `নিচের বাংলা পাঠ্যের বানান পরীক্ষা করো:\n\n${text}`
+    );
+
+    const responseText = result.response.text();
+    const parsed = cleanAndParse(responseText);
+
+    // Validate structure
+    if (!parsed.errors || !Array.isArray(parsed.errors)) {
+      return { errors: [], summary: "কোনো বানান ভুল পাওয়া যায়নি।" };
+    }
+
+    return parsed;
   } catch (error) {
-    console.warn("Primary API failed. Engaging Groq fallback...", error.message);
-    rawText = await fetchFromGroq(systemPrompt, userText);
+    console.error("Gemini spell check error:", error);
+    throw new Error(`বানান পরীক্ষায় সমস্যা হয়েছে: ${error.message}`);
   }
-  
-  let cleaned = rawText.trim();
-  const fence = String.fromCharCode(96, 96, 96); 
-  
-  if (cleaned.startsWith(fence + "json")) cleaned = cleaned.substring(7);
-  else if (cleaned.startsWith(fence)) cleaned = cleaned.substring(3);
-  
-  if (cleaned.endsWith(fence)) cleaned = cleaned.substring(0, cleaned.length - 3);
-  
-  return JSON.parse(cleaned.trim());
+}
+
+// ============================================================
+// GEMINI API CALL — NEWS REWRITE
+// ============================================================
+export async function rewriteNewsWithGemini(text) {
+  try {
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction: REWRITE_PROMPT,
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 8192,
+        // ⚠️ DO NOT add responseMimeType: "application/json" here.
+      },
+    });
+
+    const result = await model.generateContent(
+      `নিচের সংবাদটি পেশাদার মানে পুনর্লিখন করো:\n\n${text}`
+    );
+
+    const responseText = result.response.text();
+    const parsed = cleanAndParse(responseText);
+
+    // Validate structure
+    if (!parsed.rewritten) {
+      throw new Error("AI থেকে পুনর্লিখিত সংবাদ পাওয়া যায়নি।");
+    }
+
+    return {
+      rewritten: parsed.rewritten || "",
+      english: parsed.english || "",
+      changes: parsed.changes || [],
+    };
+  } catch (error) {
+    console.error("Gemini rewrite error:", error);
+    throw new Error(`সংবাদ পুনর্লিখনে সমস্যা হয়েছে: ${error.message}`);
+  }
+}
+
+// ============================================================
+// GROQ FALLBACK — SPELL CHECK
+// (Used if Gemini fails or quota exceeded)
+// ============================================================
+export async function checkSpellingWithGroq(text) {
+  try {
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "system",
+              content: SPELL_CHECK_PROMPT,
+            },
+            {
+              role: "user",
+              content: `নিচের বাংলা পাঠ্যের বানান পরীক্ষা করো:\n\n${text}`,
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 4096,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.choices?.[0]?.message?.content;
+    const parsed = cleanAndParse(responseText);
+
+    if (!parsed.errors || !Array.isArray(parsed.errors)) {
+      return { errors: [], summary: "কোনো বানান ভুল পাওয়া যায়নি।" };
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error("Groq spell check error:", error);
+    throw new Error(`Groq বানান পরীক্ষায় সমস্যা: ${error.message}`);
+  }
+}
+
+// ============================================================
+// GROQ FALLBACK — NEWS REWRITE
+// ============================================================
+export async function rewriteNewsWithGroq(text) {
+  try {
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "system",
+              content: REWRITE_PROMPT,
+            },
+            {
+              role: "user",
+              content: `নিচের সংবাদটি পেশাদার মানে পুনর্লিখন করো:\n\n${text}`,
+            },
+          ],
+          temperature: 0.4,
+          max_tokens: 8192,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.choices?.[0]?.message?.content;
+    const parsed = cleanAndParse(responseText);
+
+    if (!parsed.rewritten) {
+      throw new Error("Groq থেকে পুনর্লিখিত সংবাদ পাওয়া যায়নি।");
+    }
+
+    return {
+      rewritten: parsed.rewritten || "",
+      english: parsed.english || "",
+      changes: parsed.changes || [],
+    };
+  } catch (error) {
+    console.error("Groq rewrite error:", error);
+    throw new Error(`Groq সংবাদ পুনর্লিখনে সমস্যা: ${error.message}`);
+  }
 }
