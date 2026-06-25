@@ -33,6 +33,44 @@ function cleanAndParse(text) {
 }
 
 // ============================================================
+// UTILITY: Convert ASCII digits to Bengali digits
+// ============================================================
+function toBanglaNum(n) {
+  const map = { "0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪", "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯" };
+  return String(n).replace(/[0-9]/g, (d) => map[d]);
+}
+
+// ============================================================
+// UTILITY: Drop invalid/garbage "errors" from the model output.
+// Weaker models (especially the Groq fallback) flag correct words,
+// echo the word back as its own "fix", or stuff commentary sentences
+// into the suggestion field. None of those are usable corrections.
+// ============================================================
+function sanitizeErrors(errors, sourceText) {
+  if (!Array.isArray(errors)) return [];
+  return errors.filter((e) => {
+    if (!e || typeof e.word !== "string" || typeof e.suggestion !== "string") return false;
+    const word = e.word.trim();
+    const suggestion = e.suggestion.trim();
+    if (!word || !suggestion) return false;
+    if (word === suggestion) return false;                 // identical → not an error
+    if (suggestion.includes(",")) return false;            // commentary, not a fix
+    if (suggestion.split(/\s+/).length > 3) return false;  // a sentence, not a correction
+    if (sourceText && !sourceText.includes(word)) return false; // word not in text → unusable
+    return true;
+  });
+}
+
+// Build a sanitized spell-check result with a consistent Bengali summary.
+function buildSpellResult(parsed, sourceText) {
+  const errors = sanitizeErrors(parsed && parsed.errors, sourceText);
+  const summary = errors.length
+    ? `মোট ${toBanglaNum(errors.length)}টি বানান ভুল পাওয়া গেছে।`
+    : "কোনো বানান ভুল পাওয়া যায়নি।";
+  return { errors, summary };
+}
+
+// ============================================================
 // SPELL CHECK PROMPT
 // Built directly from বাংলা একাডেমি প্রমিত বাংলা বানানের নিয়ম (২০১২)
 // ============================================================
@@ -230,7 +268,7 @@ const REWRITE_PROMPT = `
 export async function checkSpellingWithGemini(text) {
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       systemInstruction: SPELL_CHECK_PROMPT,
       generationConfig: {
         temperature: 0.1,
@@ -247,11 +285,7 @@ export async function checkSpellingWithGemini(text) {
     const responseText = result.response.text();
     const parsed = cleanAndParse(responseText);
 
-    if (!parsed.errors || !Array.isArray(parsed.errors)) {
-      return { errors: [], summary: "কোনো বানান ভুল পাওয়া যায়নি।" };
-    }
-
-    return parsed;
+    return buildSpellResult(parsed, text);
   } catch (error) {
     console.error("Gemini spell check error:", error);
     throw new Error(`বানান পরীক্ষায় সমস্যা হয়েছে: ${error.message}`);
@@ -264,7 +298,7 @@ export async function checkSpellingWithGemini(text) {
 export async function rewriteNewsWithGemini(text) {
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       systemInstruction: REWRITE_PROMPT,
       generationConfig: {
         temperature: 0.4,
@@ -326,10 +360,7 @@ export async function checkSpellingWithGroq(text) {
     const data = await response.json();
     const responseText = data.choices?.[0]?.message?.content;
     const parsed = cleanAndParse(responseText);
-    if (!parsed.errors || !Array.isArray(parsed.errors)) {
-      return { errors: [], summary: "কোনো বানান ভুল পাওয়া যায়নি।" };
-    }
-    return parsed;
+    return buildSpellResult(parsed, text);
   } catch (error) {
     console.error("Groq spell check error:", error);
     throw new Error(`Groq বানান পরীক্ষায় সমস্যা: ${error.message}`);
