@@ -46,23 +46,37 @@ function toBanglaNum(n) {
 // echo the word back as its own "fix", or stuff commentary sentences
 // into the suggestion field. None of those are usable corrections.
 // ============================================================
-function sanitizeErrors(errors) {
+// Normalize Bengali for comparison: NFC + strip zero-width joiners/marks
+// so the model's word form and the source text's form compare equal.
+function normBn(s) {
+  return String(s).normalize("NFC").replace(/[​‌‍﻿]/g, "");
+}
+
+function sanitizeErrors(errors, sourceText) {
   if (!Array.isArray(errors)) return [];
+  const src = normBn(sourceText || "");
   return errors.filter((e) => {
     if (!e || typeof e.word !== "string" || typeof e.suggestion !== "string") return false;
     const word = e.word.trim();
     const suggestion = e.suggestion.trim();
     if (!word || !suggestion) return false;
-    if (word.normalize("NFC") === suggestion.normalize("NFC")) return false; // identical → not an error
+    const nWord = normBn(word);
+    const nSug = normBn(suggestion);
+    if (!nWord || nWord === nSug) return false;            // identical → not an error
     if (suggestion.includes(",")) return false;            // commentary, not a fix
     if (suggestion.split(/\s+/).length > 3) return false;  // a sentence, not a correction
+    // Drop hallucinations: the flagged word must actually occur in the text.
+    if (src && !src.includes(nWord)) {
+      console.log("[sanitize drop] not-in-source word=", JSON.stringify(word), "codes=", [...nWord].map((c) => c.codePointAt(0).toString(16)).join(" "));
+      return false;
+    }
     return true;
   });
 }
 
 // Build a sanitized spell-check result with a consistent Bengali summary.
-function buildSpellResult(parsed) {
-  const errors = sanitizeErrors(parsed && parsed.errors);
+function buildSpellResult(parsed, sourceText) {
+  const errors = sanitizeErrors(parsed && parsed.errors, sourceText);
   const summary = errors.length
     ? `মোট ${toBanglaNum(errors.length)}টি বানান ভুল পাওয়া গেছে।`
     : "কোনো বানান ভুল পাওয়া যায়নি।";
@@ -319,7 +333,7 @@ export async function checkSpellingWithGemini(text) {
     );
 
     const parsed = cleanAndParse(responseText);
-    return buildSpellResult(parsed);
+    return buildSpellResult(parsed, text);
   } catch (error) {
     console.error("Gemini spell check error:", error);
     throw new Error(`বানান পরীক্ষায় সমস্যা হয়েছে: ${error.message}`);
@@ -389,7 +403,7 @@ export async function checkSpellingWithGroq(text) {
     const data = await response.json();
     const responseText = data.choices?.[0]?.message?.content;
     const parsed = cleanAndParse(responseText);
-    return buildSpellResult(parsed);
+    return buildSpellResult(parsed, text);
   } catch (error) {
     console.error("Groq spell check error:", error);
     throw new Error(`Groq বানান পরীক্ষায় সমস্যা: ${error.message}`);
