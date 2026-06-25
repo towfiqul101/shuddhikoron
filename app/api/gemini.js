@@ -320,7 +320,14 @@ export async function checkSpellingWithGemini(text) {
     );
 
     const parsed = cleanAndParse(responseText);
-    return buildSpellResult(parsed, text);
+    const result = buildSpellResult(parsed, text);
+    console.log(
+      "[spell debug] rawLen=", responseText.length,
+      "parsedErrors=", Array.isArray(parsed.errors) ? parsed.errors.length : `none(keys:${Object.keys(parsed || {})})`,
+      "sanitized=", result.errors.length,
+      "raw=", responseText.slice(0, 1000)
+    );
+    return result;
   } catch (error) {
     console.error("Gemini spell check error:", error);
     throw new Error(`বানান পরীক্ষায় সমস্যা হয়েছে: ${error.message}`);
