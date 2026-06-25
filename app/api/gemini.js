@@ -71,6 +71,48 @@ function buildSpellResult(parsed, sourceText) {
 }
 
 // ============================================================
+// GEMINI CALLER — model fallback + retry on transient errors
+// 2.5-flash sometimes returns 503 (high demand) or a rate-limit 429.
+// Those are temporary, so retry the same model, then try a second
+// confirmed-working model, before letting the route fall back to Groq.
+// ============================================================
+const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function isTransientGeminiError(err) {
+  const status = err && err.status;
+  const msg = String((err && err.message) || err);
+  return (
+    status === 429 ||
+    status === 500 ||
+    status === 503 ||
+    /\b(429|500|502|503|504)\b|overloaded|high demand|Service Unavailable|fetch failed|ECONNRESET|ETIMEDOUT/i.test(msg)
+  );
+}
+
+async function generateGeminiText(userPrompt, { systemInstruction, generationConfig }) {
+  let lastErr;
+  for (const modelName of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName, systemInstruction, generationConfig });
+        const result = await model.generateContent(userPrompt);
+        return result.response.text();
+      } catch (err) {
+        lastErr = err;
+        if (isTransientGeminiError(err) && attempt === 0) {
+          await sleep(800); // brief backoff, then one retry on the same model
+          continue;
+        }
+        break; // exhausted retries or non-transient → try next model
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// ============================================================
 // SPELL CHECK PROMPT
 // Built directly from বাংলা একাডেমি প্রমিত বাংলা বানানের নিয়ম (২০১২)
 // ============================================================
@@ -267,24 +309,17 @@ const REWRITE_PROMPT = `
 // ============================================================
 export async function checkSpellingWithGemini(text) {
   try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      systemInstruction: SPELL_CHECK_PROMPT,
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 4096,
-        // ⚠️ DO NOT add responseMimeType: "application/json" here.
-        // It silently overrides systemInstruction and breaks everything.
-      },
-    });
-
-    const result = await model.generateContent(
-      `নিচের বাংলা পাঠ্যের বানান পরীক্ষা করো। শুধুমাত্র নিশ্চিত ভুল বানান চিহ্নিত করো, সন্দেহ থাকলে ভুল ধরো না:\n\n${text}`
+    // ⚠️ DO NOT set responseMimeType: "application/json" in generationConfig.
+    // It silently overrides systemInstruction and breaks the spell-check prompt.
+    const responseText = await generateGeminiText(
+      `নিচের বাংলা পাঠ্যের বানান পরীক্ষা করো। শুধুমাত্র নিশ্চিত ভুল বানান চিহ্নিত করো, সন্দেহ থাকলে ভুল ধরো না:\n\n${text}`,
+      {
+        systemInstruction: SPELL_CHECK_PROMPT,
+        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+      }
     );
 
-    const responseText = result.response.text();
     const parsed = cleanAndParse(responseText);
-
     return buildSpellResult(parsed, text);
   } catch (error) {
     console.error("Gemini spell check error:", error);
@@ -297,20 +332,14 @@ export async function checkSpellingWithGemini(text) {
 // ============================================================
 export async function rewriteNewsWithGemini(text) {
   try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      systemInstruction: REWRITE_PROMPT,
-      generationConfig: {
-        temperature: 0.4,
-        maxOutputTokens: 8192,
-      },
-    });
-
-    const result = await model.generateContent(
-      `নিচের সংবাদটি পেশাদার মানে পুনর্লিখন করো:\n\n${text}`
+    const responseText = await generateGeminiText(
+      `নিচের সংবাদটি পেশাদার মানে পুনর্লিখন করো:\n\n${text}`,
+      {
+        systemInstruction: REWRITE_PROMPT,
+        generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },
+      }
     );
 
-    const responseText = result.response.text();
     const parsed = cleanAndParse(responseText);
 
     if (!parsed.rewritten) {
@@ -352,6 +381,7 @@ export async function checkSpellingWithGroq(text) {
           ],
           temperature: 0.1,
           max_tokens: 4096,
+          response_format: { type: "json_object" },
         }),
       }
     );
@@ -391,6 +421,7 @@ export async function rewriteNewsWithGroq(text) {
           ],
           temperature: 0.4,
           max_tokens: 8192,
+          response_format: { type: "json_object" },
         }),
       }
     );
