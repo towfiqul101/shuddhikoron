@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { checkSpellingWithGemini, checkSpellingWithGroq } from "../gemini";
 
+// Allow time for Gemini retries + Groq fallback before timing out.
+export const maxDuration = 60;
+
 export async function POST(request) {
   try {
     const { text } = await request.json();

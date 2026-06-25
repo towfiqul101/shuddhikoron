@@ -55,7 +55,6 @@ function normBn(s) {
 function sanitizeErrors(errors, sourceText) {
   if (!Array.isArray(errors)) return [];
   const src = normBn(sourceText || "");
-  console.log("[sanitize src] len=", src.length, "head codes=", [...src.slice(0, 40)].map((c) => c.codePointAt(0).toString(16)).join(" "));
   return errors.filter((e) => {
     if (!e || typeof e.word !== "string" || typeof e.suggestion !== "string") return false;
     const word = e.word.trim();
@@ -66,11 +65,7 @@ function sanitizeErrors(errors, sourceText) {
     if (!nWord || nWord === nSug) return false;            // identical → not an error
     if (suggestion.includes(",")) return false;            // commentary, not a fix
     if (suggestion.split(/\s+/).length > 3) return false;  // a sentence, not a correction
-    // Drop hallucinations: the flagged word must actually occur in the text.
-    if (src && !src.includes(nWord)) {
-      console.log("[sanitize drop] not-in-source word=", JSON.stringify(word), "codes=", [...nWord].map((c) => c.codePointAt(0).toString(16)).join(" "));
-      return false;
-    }
+    if (src && !src.includes(nWord)) return false;         // hallucinated word not in text
     return true;
   });
 }
@@ -105,21 +100,24 @@ function isTransientGeminiError(err) {
   );
 }
 
+const MAX_ATTEMPTS_PER_MODEL = 3;
+
 async function generateGeminiText(userPrompt, { systemInstruction, generationConfig }) {
   let lastErr;
   for (const modelName of GEMINI_MODELS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_MODEL; attempt++) {
       try {
         const model = genAI.getGenerativeModel({ model: modelName, systemInstruction, generationConfig });
         const result = await model.generateContent(userPrompt);
         return result.response.text();
       } catch (err) {
         lastErr = err;
-        if (isTransientGeminiError(err) && attempt === 0) {
-          await sleep(800); // brief backoff, then one retry on the same model
+        // Retry the same model on transient 503/429 with exponential backoff.
+        if (isTransientGeminiError(err) && attempt < MAX_ATTEMPTS_PER_MODEL - 1) {
+          await sleep(600 * (attempt + 1)); // 600ms, 1200ms
           continue;
         }
-        break; // exhausted retries or non-transient → try next model
+        break; // non-transient, or retries exhausted → try next model
       }
     }
   }
