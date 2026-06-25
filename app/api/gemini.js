@@ -55,6 +55,7 @@ function normBn(s) {
 function sanitizeErrors(errors, sourceText) {
   if (!Array.isArray(errors)) return [];
   const src = normBn(sourceText || "");
+  console.log("[sanitize src] len=", src.length, "head codes=", [...src.slice(0, 40)].map((c) => c.codePointAt(0).toString(16)).join(" "));
   return errors.filter((e) => {
     if (!e || typeof e.word !== "string" || typeof e.suggestion !== "string") return false;
     const word = e.word.trim();
